@@ -1,161 +1,149 @@
 <!DOCTYPE html>
-<html lang="zh">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>30秒音頻分析 - 音波環形可視化</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/addons/p5.sound.min.js"></script>
     <style>
-        body {
-            font-family: Arial, sans-serif;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-            margin: 0;
-            background-color: #f0f0f0;
-        }
         .container {
-            text-align: center;
-            background-color: white;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
             padding: 20px;
-            border-radius: 10px;
-            box-shadow: 0 0 10px rgba(0,0,0,0.1);
         }
+        
         button {
-            margin: 10px;
             padding: 10px 20px;
             font-size: 16px;
             cursor: pointer;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
         }
-        #analysisResults {
-            margin-top: 20px;
+        
+        button:disabled {
+            background-color: #cccccc;
         }
-        #visualizationContainer {
-            width: 400px;
-            height: 400px;
-            margin: 20px auto;
+        
+        canvas {
+            border: 1px solid #ddd;
+            border-radius: 5px;
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>30秒音頻分析音波環形可視化</h1>
-        <button id="startButton">開始錄音</button>
-        <button id="stopButton" disabled>停止錄音</button>
-        <div id="visualizationContainer"></div>
-        <div id="analysisResults"></div>
+        <canvas id="visualizer" width="400" height="400"></canvas>
+        <button id="startBtn">開始錄音</button>
+        <button id="stopBtn" disabled>停止錄音</button>
     </div>
 
     <script>
-        let mic, fft, recorder;
+        let audioContext;
+        let analyser;
+        let source;
+        let mediaRecorder;
         let isRecording = false;
-        let recordingStartTime;
-        const MAX_RECORDING_TIME = 30; // 30秒錄音時間
-        const BASE_RADIUS = 100; // 基礎半徑
-        const MAX_RADIUS = 180; // 最大半徑
-        const SMOOTHING = 0.8; // 平滑因子
-
-        function setup() {
-            let canvas = createCanvas(400, 400);
-            canvas.parent('visualizationContainer');
-            colorMode(RGB, 255, 255, 255, 1);
-            angleMode(DEGREES);
-            
-            mic = new p5.AudioIn();
-            fft = new p5.FFT(SMOOTHING, 1024);
-            recorder = new p5.SoundRecorder();
-            mic.connect(fft);
-            recorder.setInput(mic);
-
-            document.getElementById('startButton').addEventListener('click', startRecording);
-            document.getElementById('stopButton').addEventListener('click', stopRecording);
+        
+        const canvas = document.getElementById('visualizer');
+        const ctx = canvas.getContext('2d');
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        
+        const centerX = canvas.width / 2;
+        const centerY = canvas.height / 2;
+        const radius = Math.min(centerX, centerY) - 50;
+        
+        startBtn.addEventListener('click', startRecording);
+        stopBtn.addEventListener('click', stopRecording);
+        
+        async function startRecording() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                
+                audioContext = new AudioContext();
+                analyser = audioContext.createAnalyser();
+                source = audioContext.createMediaStreamSource(stream);
+                
+                source.connect(analyser);
+                analyser.fftSize = 256;
+                
+                mediaRecorder = new MediaRecorder(stream);
+                mediaRecorder.start();
+                
+                isRecording = true;
+                startBtn.disabled = true;
+                stopBtn.disabled = false;
+                
+                draw();
+            } catch (err) {
+                console.error('Error accessing microphone:', err);
+            }
         }
-
-        function startRecording() {
-            userStartAudio();
-            mic.start();
-            recorder.record();
-            isRecording = true;
-            recordingStartTime = millis();
-            document.getElementById('startButton').disabled = true;
-            document.getElementById('stopButton').disabled = false;
-            document.getElementById('analysisResults').innerHTML = '正在錄音...';
-        }
-
+        
         function stopRecording() {
-            mic.stop();
-            recorder.stop();
+            mediaRecorder.stop();
+            source.disconnect();
             isRecording = false;
-            document.getElementById('startButton').disabled = false;
-            document.getElementById('stopButton').disabled = true;
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
         }
-
+        
         function draw() {
-            background(240);
+            if (!isRecording) return;
             
-            if (isRecording) {
-                let currentTime = (millis() - recordingStartTime) / 1000;
-                if (currentTime <= MAX_RECORDING_TIME) {
-                    analyzeAndVisualize(currentTime);
-                } else {
-                    stopRecording();
-                }
+            requestAnimationFrame(draw);
+            
+            const bufferLength = analyser.frequencyBinCount;
+            const dataArray = new Uint8Array(bufferLength);
+            analyser.getByteFrequencyData(dataArray);
+            
+            ctx.fillStyle = 'white';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // 繪製內圈放射線
+            ctx.beginPath();
+            for (let i = 0; i < 60; i++) {
+                const angle = (i / 60) * Math.PI * 2;
+                const innerRadius = radius * 0.4;
+                const outerRadius = radius * 0.5;
+                
+                ctx.moveTo(
+                    centerX + Math.cos(angle) * innerRadius,
+                    centerY + Math.sin(angle) * innerRadius
+                );
+                ctx.lineTo(
+                    centerX + Math.cos(angle) * outerRadius,
+                    centerY + Math.sin(angle) * outerRadius
+                );
             }
-        }
-
-        function analyzeAndVisualize(currentTime) {
-            let spectrum = fft.analyze();
-            let energy = fft.getEnergy("mid");
-            let dominantFreq = fft.getCentroid();
-            let decibels = 20 * Math.log10(energy / 255);
-
-            push();
-            translate(width / 2, height / 2);
-
-            // 繪製音波環形
-            noFill();
-            strokeWeight(2);
-            stroke(0);
-            beginShape();
-            for (let i = 0; i < 360; i++) {
-                let index = floor(map(i, 0, 360, 0, spectrum.length));
-                let r = map(spectrum[index], 0, 255, BASE_RADIUS, MAX_RADIUS);
-                let x = r * cos(i);
-                let y = r * sin(i);
-                vertex(x, y);
+            ctx.strokeStyle = '#666';
+            ctx.stroke();
+            
+            // 繪製中間圓環
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, radius * 0.6, 0, Math.PI * 2);
+            ctx.strokeStyle = '#444';
+            ctx.lineWidth = 4;
+            ctx.stroke();
+            
+            // 繪製外圈頻譜
+            ctx.beginPath();
+            for (let i = 0; i < bufferLength; i++) {
+                const angle = (i / bufferLength) * Math.PI * 2;
+                const value = dataArray[i];
+                const height = (value / 255) * (radius * 0.3);
+                
+                const x1 = centerX + Math.cos(angle) * (radius * 0.7);
+                const y1 = centerY + Math.sin(angle) * (radius * 0.7);
+                const x2 = centerX + Math.cos(angle) * (radius * 0.7 + height);
+                const y2 = centerY + Math.sin(angle) * (radius * 0.7 + height);
+                
+                ctx.moveTo(x1, y1);
+                ctx.lineTo(x2, y2);
             }
-            endShape(CLOSE);
-
-            // 頻率（音高）對應到主體的透明度
-            let alpha = map(dominantFreq, 0, 1000, 0.1, 1);
-
-            // 持續時間對應到 RGB 數值
-            let r = map(currentTime, 0, MAX_RECORDING_TIME, 0, 255);
-            let g = map(currentTime, 0, MAX_RECORDING_TIME, 255, 0);
-            let b = map(currentTime, 0, MAX_RECORDING_TIME / 2, 0, 255);
-            if (currentTime > MAX_RECORDING_TIME / 2) {
-                b = map(currentTime, MAX_RECORDING_TIME / 2, MAX_RECORDING_TIME, 255, 0);
-            }
-
-            // 繪製主體
-            noStroke();
-            fill(r, g, b, alpha);
-            ellipse(0, 0, BASE_RADIUS * 2, BASE_RADIUS * 2);
-
-            pop();
-
-            updateAnalysisResults(energy, dominantFreq, decibels, currentTime);
-        }
-
-        function updateAnalysisResults(energy, dominantFreq, decibels, duration) {
-            document.getElementById('analysisResults').innerHTML = `
-                當前音量: ${energy.toFixed(2)}<br>
-                主頻率: ${dominantFreq.toFixed(2)} Hz<br>
-                當前分貝: ${decibels.toFixed(2)} dB<br>
-                錄音時長: ${duration.toFixed(2)} 秒
-            `;
+            ctx.strokeStyle = '#000';
+            ctx.lineWidth = 2;
+            ctx.stroke();
         }
     </script>
 </body>
