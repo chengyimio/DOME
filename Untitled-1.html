@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>30秒音頻分析 - 音波環形可視化</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/addons/p5.sound.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            background-color: #f0f0f0;
+        }
+        .container {
+            text-align: center;
+            background-color: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        button {
+            margin: 10px;
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+        #analysisResults {
+            margin-top: 20px;
+        }
+        #visualizationContainer {
+            width: 400px;
+            height: 400px;
+            margin: 20px auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>30秒音頻分析音波環形可視化</h1>
+        <button id="startButton">開始錄音</button>
+        <button id="stopButton" disabled>停止錄音</button>
+        <div id="visualizationContainer"></div>
+        <div id="analysisResults"></div>
+    </div>
+
+    <script>
+        let mic, fft, recorder;
+        let isRecording = false;
+        let recordingStartTime;
+        const MAX_RECORDING_TIME = 30; // 30秒錄音時間
+        const BASE_RADIUS = 100; // 基礎半徑
+        const MAX_RADIUS = 180; // 最大半徑
+        const SMOOTHING = 0.8; // 平滑因子
+
+        function setup() {
+            let canvas = createCanvas(400, 400);
+            canvas.parent('visualizationContainer');
+            colorMode(RGB, 255, 255, 255, 1);
+            angleMode(DEGREES);
+            
+            mic = new p5.AudioIn();
+            fft = new p5.FFT(SMOOTHING, 1024);
+            recorder = new p5.SoundRecorder();
+            mic.connect(fft);
+            recorder.setInput(mic);
+
+            document.getElementById('startButton').addEventListener('click', startRecording);
+            document.getElementById('stopButton').addEventListener('click', stopRecording);
+        }
+
+        function startRecording() {
+            userStartAudio();
+            mic.start();
+            recorder.record();
+            isRecording = true;
+            recordingStartTime = millis();
+            document.getElementById('startButton').disabled = true;
+            document.getElementById('stopButton').disabled = false;
+            document.getElementById('analysisResults').innerHTML = '正在錄音...';
+        }
+
+        function stopRecording() {
+            mic.stop();
+            recorder.stop();
+            isRecording = false;
+            document.getElementById('startButton').disabled = false;
+            document.getElementById('stopButton').disabled = true;
+        }
+
+        function draw() {
+            background(240);
+            
+            if (isRecording) {
+                let currentTime = (millis() - recordingStartTime) / 1000;
+                if (currentTime <= MAX_RECORDING_TIME) {
+                    analyzeAndVisualize(currentTime);
+                } else {
+                    stopRecording();
+                }
+            }
+        }
+
+        function analyzeAndVisualize(currentTime) {
+            let spectrum = fft.analyze();
+            let energy = fft.getEnergy("mid");
+            let dominantFreq = fft.getCentroid();
+            let decibels = 20 * Math.log10(energy / 255);
+
+            push();
+            translate(width / 2, height / 2);
+
+            // 繪製音波環形
+            noFill();
+            strokeWeight(2);
+            stroke(0);
+            beginShape();
+            for (let i = 0; i < 360; i++) {
+                let index = floor(map(i, 0, 360, 0, spectrum.length));
+                let r = map(spectrum[index], 0, 255, BASE_RADIUS, MAX_RADIUS);
+                let x = r * cos(i);
+                let y = r * sin(i);
+                vertex(x, y);
+            }
+            endShape(CLOSE);
+
+            // 頻率（音高）對應到主體的透明度
+            let alpha = map(dominantFreq, 0, 1000, 0.1, 1);
+
+            // 持續時間對應到 RGB 數值
+            let r = map(currentTime, 0, MAX_RECORDING_TIME, 0, 255);
+            let g = map(currentTime, 0, MAX_RECORDING_TIME, 255, 0);
+            let b = map(currentTime, 0, MAX_RECORDING_TIME / 2, 0, 255);
+            if (currentTime > MAX_RECORDING_TIME / 2) {
+                b = map(currentTime, MAX_RECORDING_TIME / 2, MAX_RECORDING_TIME, 255, 0);
+            }
+
+            // 繪製主體
+            noStroke();
+            fill(r, g, b, alpha);
+            ellipse(0, 0, BASE_RADIUS * 2, BASE_RADIUS * 2);
+
+            pop();
+
+            updateAnalysisResults(energy, dominantFreq, decibels, currentTime);
+        }
+
+        function updateAnalysisResults(energy, dominantFreq, decibels, duration) {
+            document.getElementById('analysisResults').innerHTML = `
+                當前音量: ${energy.toFixed(2)}<br>
+                主頻率: ${dominantFreq.toFixed(2)} Hz<br>
+                當前分貝: ${decibels.toFixed(2)} dB<br>
+                錄音時長: ${duration.toFixed(2)} 秒
+            `;
+        }
+    </script>
+</body>
+</html>
