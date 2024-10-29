@@ -70,21 +70,21 @@
         .orbit {
             fill: none;
             stroke-opacity: 0.85;
-            transition: stroke-width 0.1s;
+            transition: stroke-width 0.3s ease;
         }
 
         .volume-ring {
             fill: none;
             stroke-opacity: 0.85;
-            transition: stroke-width 0.2s;
+            transition: stroke-width 0.3s ease;
         }
 
         .particle {
-            transition: transform 0.1s;
+            transition: all 0.3s ease;
         }
 
         .rays line {
-            transition: stroke 0.3s;
+            transition: all 0.3s ease;
         }
     </style>
 </head>
@@ -92,19 +92,11 @@
     <div class="container">
         <div class="visualization-container">
             <svg viewBox="-200 -200 400 400" preserveAspectRatio="xMidYMid meet">
-                <!-- 音量指示環 -->
                 <circle class="volume-ring" r="80" cx="0" cy="0" stroke-width="1" />
-                
-                <!-- 主要視覺化元素組 -->
                 <g class="visualization-group">
-                    <!-- 中心放射線 -->
+                    <circle class="center-particle particle" r="4" cx="0" cy="0" fill="black" />
                     <g class="rays"></g>
-                    
-                    <!-- 軌道群組 -->
                     <g class="orbits"></g>
-                    
-                    <!-- 中心點 -->
-                    <circle class="center-particle particle" r="4" />
                 </g>
             </svg>
         </div>
@@ -132,6 +124,10 @@
                 this.analyser = null;
                 this.mediaRecorder = null;
                 this.source = null;
+
+                this.rayRotation = 0;
+                this.rayAmplitudes = [];
+                this.rayPhases = [];
 
                 this.startBtn = document.getElementById('startBtn');
                 this.stopBtn = document.getElementById('stopBtn');
@@ -161,6 +157,9 @@
                     line.setAttribute("transform", `rotate(${angle})`);
                     line.setAttribute("stroke", "black");
                     line.setAttribute("stroke-width", "1");
+                    line.setAttribute("data-base-length", "20");
+                    this.rayAmplitudes[i] = Math.random() * 2 + 1;
+                    this.rayPhases[i] = Math.random() * Math.PI * 2;
                     raysGroup.appendChild(line);
                 }
             }
@@ -182,7 +181,6 @@
                     orbitGroup.setAttribute("data-rotation", "0");
                     orbitGroup.setAttribute("data-speed", config.speed);
 
-                    // 創建軌道
                     const orbit = document.createElementNS("http://www.w3.org/2000/svg", "ellipse");
                     orbit.classList.add("orbit");
                     orbit.setAttribute("rx", config.rx);
@@ -191,14 +189,13 @@
                     orbit.setAttribute("stroke-width", "1");
                     orbitGroup.appendChild(orbit);
 
-                    // 創建粒子
                     for (let i = 0; i < particleCount; i++) {
                         const angle = (i * 360) / particleCount;
                         const x = config.rx * Math.cos(angle * Math.PI / 180);
                         const y = config.ry * Math.sin(angle * Math.PI / 180);
                         
                         const particle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-                        particle.classList.add("particle");
+                        particle.classList.add("particle", "orbit-particle");
                         particle.setAttribute("r", "4");
                         particle.setAttribute("cx", x);
                         particle.setAttribute("cy", y);
@@ -255,7 +252,7 @@
                 const hue = (elapsed * 20) % 360;
                 this.currentColor = `hsl(${hue}, 70%, 50%)`;
                 
-                document.querySelectorAll('.orbit, .particle, .rays line, .volume-ring, .center-particle')
+                document.querySelectorAll('.orbit, .particle, .rays line, .volume-ring')
                     .forEach(el => {
                         if (el.classList.contains('orbit') || el.classList.contains('volume-ring')) {
                             el.style.stroke = this.currentColor;
@@ -293,34 +290,55 @@
                 
                 // 更新音量環
                 const volumeRing = document.querySelector('.volume-ring');
-                volumeRing.style.strokeWidth = 1 + volume * 20;
+                volumeRing.style.strokeWidth = 1 + volume * 30;
                 
-                // 更新粒子數量
-                const currentParticles = document.querySelectorAll('.orbit-group-0 .particle').length;
-                if (currentParticles !== particleCount) {
-                    this.createOrbitGroups(particleCount);
-                }
+                // 更新中心圓點
+                const centerParticle = document.querySelector('.center-particle');
+                centerParticle.setAttribute('r', 4 + volume * 6);
+                
+                // 更新放射線
+                this.rayRotation += 0.5 + volume * 2;
+                const rays = document.querySelectorAll('.rays line');
+                const time = Date.now() / 1000;
 
-                // 更新軌道粗細
-                document.querySelectorAll('.orbit').forEach(orbit => {
-                    orbit.style.strokeWidth = 1 + volume * 5;
+                rays.forEach((ray, index) => {
+                    const amplitude = this.rayAmplitudes[index];
+                    const phase = this.rayPhases[index];
+                    
+                    const waveOffset = Math.sin(time * 2 + phase) * amplitude;
+                    const lengthMultiplier = 1 + volume * 2 + waveOffset * 0.5;
+                    
+                    ray.setAttribute("y2", -40 * lengthMultiplier);
+                    const strokeWidth = 1 + volume * 8 + Math.abs(waveOffset) * 2;
+                    ray.style.strokeWidth = strokeWidth;
+                    
+                    const baseAngle = (index * 360) / rays.length;
+                    const rotationAngle = baseAngle + this.rayRotation + Math.sin(time + phase) * 5;
+                    ray.setAttribute("transform", `rotate(${rotationAngle})`);
                 });
 
-                // 更新粒子位置
-                document.querySelectorAll('.particle').forEach(particle => {
+                // 更新軌道粗細
+                document.querySelectorAll('.orbit').forEach((orbit, index) => {
+                    const strokeWidth = 1 + volume * 8 * (1 - index * 0.2);
+                    orbit.style.strokeWidth = strokeWidth;
+                });
+
+                // 更新軌道粒子
+                document.querySelectorAll('.orbit-particle').forEach(particle => {
                     const baseX = parseFloat(particle.getAttribute('data-base-x') || 0);
                     const baseY = parseFloat(particle.getAttribute('data-base-y') || 0);
                     
-                    const expansion = 1 + volume * 0.5;
+                    const expansion = 1 + volume * 0.8;
                     particle.setAttribute('cx', baseX * expansion);
                     particle.setAttribute('cy', baseY * expansion);
+                    particle.setAttribute('r', 4 + volume * 6);
                 });
 
                 // 更新軌道旋轉
                 document.querySelectorAll('[class^="orbit-group-"]').forEach(group => {
                     const currentRotation = parseFloat(group.getAttribute('data-rotation'));
                     const speed = parseFloat(group.getAttribute('data-speed'));
-                    const newRotation = (currentRotation + speed) % 360;
+                    const newRotation = (currentRotation + speed * (1 + volume)) % 360;
                     group.setAttribute('data-rotation', newRotation);
                     group.style.transform = `rotate(${newRotation}deg)`;
                 });
