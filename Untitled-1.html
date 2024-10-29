@@ -3,106 +3,101 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Atomic Orbit Audio Visualizer</title>
+    <title>Spirit Audio Visualizer</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
         body {
-            display: flex;
-            justify-content: center;
-            align-items: center;
+            background: linear-gradient(45deg, #1a1a1a, #2a2a2a);
             min-height: 100vh;
-            background: #f0f0f0;
-        }
-
-        .container {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 20px;
-            padding: 20px;
-            width: 100%;
-            max-width: 800px;
         }
 
         .visualization-container {
-            width: 100%;
             aspect-ratio: 1;
-            background: white;
-            border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            background: transparent;
         }
 
         svg {
             width: 100%;
             height: 100%;
+            filter: blur(0.3px);
         }
 
-        .control-panel {
-            display: flex;
-            gap: 16px;
-        }
-
-        button {
-            padding: 12px 24px;
-            font-size: 16px;
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-            background: #4CAF50;
+        .audio-stats {
             color: white;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            padding: 15px;
+        }
+
+        .ray {
+            stroke: rgba(255, 255, 255, 0.6);
             transition: all 0.3s ease;
-        }
-
-        button:hover {
-            background: #45a049;
-        }
-
-        button:disabled {
-            background: #cccccc;
-            cursor: not-allowed;
-        }
-
-        .orbit {
-            fill: none;
-            stroke-opacity: 0.85;
-            transition: stroke-width 0.3s ease;
         }
 
         .volume-ring {
             fill: none;
-            stroke-opacity: 0.85;
-            transition: stroke-width 0.3s ease;
-        }
-
-        .particle {
+            stroke: rgba(255, 255, 255, 0.8);
             transition: all 0.3s ease;
         }
 
-        .rays line {
+        .orbit {
+            fill: none;
+            stroke: rgba(255, 255, 255, 0.4);
+            transition: all 0.3s ease;
+        }
+
+        .orbit-ball {
+            fill: rgba(255, 255, 255, 0.8);
+            transition: all 0.3s ease;
+        }
+
+        .custom-btn {
+            background: transparent;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            color: white;
             transition: all 0.3s ease;
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="visualization-container">
-            <svg viewBox="-200 -200 400 400" preserveAspectRatio="xMidYMid meet">
-                <circle class="volume-ring" r="80" cx="0" cy="0" stroke-width="1" />
-                <g class="visualization-group">
-                    <circle class="center-particle particle" r="4" cx="0" cy="0" fill="black" />
-                    <g class="rays"></g>
-                    <g class="orbits"></g>
-                </g>
-            </svg>
-        </div>
-        <div class="control-panel">
-            <button id="startBtn">開始錄音</button>
-            <button id="stopBtn" disabled>停止錄音</button>
+    <div class="container py-4">
+        <div class="row">
+            <div class="col-md-8">
+                <div class="visualization-container">
+                    <svg viewBox="-200 -200 400 400" preserveAspectRatio="xMidYMid meet">
+                        <g class="visualization-group">
+                            <!-- 中心放射線 -->
+                            <g class="center-rays"></g>
+                            <!-- 音量響應圓環 -->
+                            <circle class="volume-ring" r="80" stroke-width="1"/>
+                            <!-- 同心橢圓和運動小球 -->
+                            <g class="orbits-group"></g>
+                        </g>
+                    </svg>
+                </div>
+                <div class="text-center">
+                    <button id="startBtn" class="btn custom-btn me-2">開始錄音</button>
+                    <button id="stopBtn" class="btn custom-btn" disabled>停止錄音</button>
+                </div>
+            </div>
+            
+            <div class="col-md-4">
+                <div class="audio-stats">
+                    <h4 class="mb-4">音頻分析</h4>
+                    <div class="mb-3">
+                        <label>分貝值 (dB)</label>
+                        <div id="decibelValue" class="stat-value">0 dB</div>
+                    </div>
+                    <div class="mb-3">
+                        <label>頻率</label>
+                        <div id="frequencyValue" class="stat-value">0 Hz</div>
+                    </div>
+                    <div class="mb-3">
+                        <label>音量</label>
+                        <div id="volumeValue" class="stat-value">0%</div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -112,25 +107,52 @@
                 this.initializeVariables();
                 this.setupEventListeners();
                 this.createVisualElements();
+                this.startTime = null;
+                this.colorHue = 0;
+                this.minBalls = 3;    // 最少3顆球
+                this.maxBalls = 10;   // 最多10顆球
+                this.currentBalls = new Array(this.orbitCount).fill(this.minBalls); // 記錄每個軌道當前的球數
+                this.frequencyRange = {
+                    min: 85,  // 最低頻率
+                    max: 255  // 最高頻率
+        };
+        
+
             }
+                calculateBallCount(frequency) {
+        return Math.round(
+            this.map(
+                frequency,
+                this.frequencyRange.min,
+                this.frequencyRange.max,
+                this.minBalls,
+                this.maxBalls
+            )
+        );
+    }
 
             initializeVariables() {
                 this.isRecording = false;
                 this.animationFrameId = null;
-                this.startTime = null;
-                this.currentColor = 'rgb(0, 0, 0)';
-                
                 this.audioContext = null;
                 this.analyser = null;
                 this.mediaRecorder = null;
-                this.source = null;
 
-                this.rayRotation = 0;
-                this.rayAmplitudes = [];
-                this.rayPhases = [];
+                // 視覺元素配置
+                this.rayCount = 48;            // 放射線數量
+                this.orbitCount = 3;           // 軌道數量
+                this.ballsPerOrbit = 4;        // 每個軌道上的小球數量
+                
+                // 動畫相關
+                this.orbitsRotation = 0;
+                this.ballsRotation = 0;
 
+                // DOM元素
                 this.startBtn = document.getElementById('startBtn');
                 this.stopBtn = document.getElementById('stopBtn');
+                this.decibelValue = document.getElementById('decibelValue');
+                this.frequencyValue = document.getElementById('frequencyValue');
+                this.volumeValue = document.getElementById('volumeValue');
             }
 
             setupEventListeners() {
@@ -139,92 +161,98 @@
             }
 
             createVisualElements() {
-                this.createRays();
-                this.createOrbitGroups(3);
+                this.createCenterRays();
+                this.createOrbits();
             }
 
-            createRays() {
-                const raysGroup = document.querySelector('.rays');
-                const rayCount = 32;
+            createCenterRays() {
+                const raysGroup = document.querySelector('.center-rays');
+                raysGroup.innerHTML = '';
                 
-                for (let i = 0; i < rayCount; i++) {
-                    const angle = (i * 360) / rayCount;
+                for (let i = 0; i < this.rayCount; i++) {
+                    const angle = (i * 360) / this.rayCount;
                     const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                    line.classList.add('ray');
                     line.setAttribute("x1", "0");
-                    line.setAttribute("y1", "-20");
+                    line.setAttribute("y1", "0");
                     line.setAttribute("x2", "0");
                     line.setAttribute("y2", "-40");
                     line.setAttribute("transform", `rotate(${angle})`);
-                    line.setAttribute("stroke", "black");
                     line.setAttribute("stroke-width", "1");
-                    line.setAttribute("data-base-length", "20");
-                    this.rayAmplitudes[i] = Math.random() * 2 + 1;
-                    this.rayPhases[i] = Math.random() * Math.PI * 2;
                     raysGroup.appendChild(line);
                 }
             }
 
-            createOrbitGroups(particleCount) {
-                const orbitsGroup = document.querySelector('.orbits');
-                orbitsGroup.innerHTML = '';
+            createOrbits() {
+    const orbitsGroup = document.querySelector('.orbits-group');
+    orbitsGroup.innerHTML = '';
 
-                const orbitConfigs = [
-                    { rx: 160, ry: 100, speed: 0.3 },
-                    { rx: 140, ry: 90, speed: -0.4 },
-                    { rx: 120, ry: 80, speed: 0.5 },
-                    { rx: 100, ry: 70, speed: -0.6 }
-                ];
+    // 定義橢圓軌道的配置
+    const orbitConfigs = [
+        { rx: 160, ry: 100, rotation: 0 },    // 最外層橢圓
+        { rx: 140, ry: 85, rotation: 60 },    // 中層橢圓
+        { rx: 120, ry: 70, rotation: 120 }    // 內層橢圓
+    ];
 
-                orbitConfigs.forEach((config, index) => {
-                    const orbitGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
-                    orbitGroup.classList.add(`orbit-group-${index}`);
-                    orbitGroup.setAttribute("data-rotation", "0");
-                    orbitGroup.setAttribute("data-speed", config.speed);
+    orbitConfigs.forEach((config, i) => {
+        const orbitGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
+        orbitGroup.classList.add('orbit-group');
 
-                    const orbit = document.createElementNS("http://www.w3.org/2000/svg", "ellipse");
-                    orbit.classList.add("orbit");
-                    orbit.setAttribute("rx", config.rx);
-                    orbit.setAttribute("ry", config.ry);
-                    orbit.setAttribute("stroke", "black");
-                    orbit.setAttribute("stroke-width", "1");
-                    orbitGroup.appendChild(orbit);
+        // 創建橢圓軌道
+        const orbit = document.createElementNS("http://www.w3.org/2000/svg", "ellipse");
+        orbit.classList.add('orbit');
+        orbit.setAttribute("rx", config.rx);
+        orbit.setAttribute("ry", config.ry);
+        orbit.setAttribute("data-rotation", config.rotation);
+        orbit.setAttribute("transform", `rotate(${config.rotation})`);
+        orbitGroup.appendChild(orbit);
 
-                    for (let i = 0; i < particleCount; i++) {
-                        const angle = (i * 360) / particleCount;
-                        const x = config.rx * Math.cos(angle * Math.PI / 180);
-                        const y = config.ry * Math.sin(angle * Math.PI / 180);
-                        
-                        const particle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-                        particle.classList.add("particle", "orbit-particle");
-                        particle.setAttribute("r", "4");
-                        particle.setAttribute("cx", x);
-                        particle.setAttribute("cy", y);
-                        particle.setAttribute("fill", "black");
-                        particle.setAttribute("data-base-x", x);
-                        particle.setAttribute("data-base-y", y);
-                        orbitGroup.appendChild(particle);
-                    }
+        // 在橢圓軌道上添加小球
+        for (let j = 0; j < this.ballsPerOrbit; j++) {
+            const ball = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+            ball.classList.add('orbit-ball');
+            ball.setAttribute("r", "4");
+            
+            // 計算初始位置角度
+            const angle = (j * 360) / this.ballsPerOrbit;
+            ball.setAttribute("data-angle", angle);
+            
+            // 初始位置計算
+            const angleRad = angle * Math.PI / 180;
+            const x = config.rx * Math.cos(angleRad);
+            const y = config.ry * Math.sin(angleRad);
+            
+            // 應用初始旋轉
+            const rotationRad = config.rotation * Math.PI / 180;
+            const rotatedX = x * Math.cos(rotationRad) - y * Math.sin(rotationRad);
+            const rotatedY = x * Math.sin(rotationRad) + y * Math.cos(rotationRad);
+            
+            ball.setAttribute("cx", rotatedX);
+            ball.setAttribute("cy", rotatedY);
+            
+            orbitGroup.appendChild(ball);
+        }
 
-                    orbitsGroup.appendChild(orbitGroup);
-                });
-            }
+        orbitsGroup.appendChild(orbitGroup);
+    });
+}
 
             async startRecording() {
                 try {
                     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                    
+                    this.startTime = Date.now();
+                    this.colorHue = 0;
                     this.audioContext = new AudioContext();
                     this.analyser = this.audioContext.createAnalyser();
-                    this.source = this.audioContext.createMediaStreamSource(stream);
-                    
-                    this.source.connect(this.analyser);
                     this.analyser.fftSize = 2048;
+                    
+                    const source = this.audioContext.createMediaStreamSource(stream);
+                    source.connect(this.analyser);
                     
                     this.mediaRecorder = new MediaRecorder(stream);
                     this.mediaRecorder.start();
                     
                     this.isRecording = true;
-                    this.startTime = Date.now();
                     this.startBtn.disabled = true;
                     this.stopBtn.disabled = false;
                     
@@ -238,8 +266,8 @@
                 if (this.mediaRecorder?.state === 'recording') {
                     this.mediaRecorder.stop();
                 }
-                if (this.source) {
-                    this.source.disconnect();
+                if (this.audioContext) {
+                    this.audioContext.close();
                 }
                 this.isRecording = false;
                 this.startBtn.disabled = false;
@@ -247,103 +275,131 @@
                 cancelAnimationFrame(this.animationFrameId);
             }
 
-            updateColor() {
-                const elapsed = (Date.now() - this.startTime) / 1000;
-                const hue = (elapsed * 20) % 360;
-                this.currentColor = `hsl(${hue}, 70%, 50%)`;
-                
-                document.querySelectorAll('.orbit, .particle, .rays line, .volume-ring')
-                    .forEach(el => {
-                        if (el.classList.contains('orbit') || el.classList.contains('volume-ring')) {
-                            el.style.stroke = this.currentColor;
-                        } else {
-                            el.style.fill = this.currentColor;
-                            if (el.tagName === 'line') {
-                                el.style.stroke = this.currentColor;
-                            }
-                        }
-                    });
-            }
+            getAudioData() {
+    if (!this.analyser) return null;
 
-            getFrequencyRange(dataArray) {
-                const sum = dataArray.reduce((a, b) => a + b, 0);
-                return Math.floor(this.map(sum, 0, dataArray.length * 255, 2, 6));
-            }
+        const bufferLength = this.analyser.frequencyBinCount;
+        const dataArray = new Uint8Array(bufferLength);
+        this.analyser.getByteFrequencyData(dataArray);
 
-            map(value, inMin, inMax, outMin, outMax) {
-                return (value - inMin) * (outMax - outMin) / (inMax - inMin) + outMin;
-            }
+        // 計算分貝值 (一般人說話的分貝範圍在 30-60 dB)
+        const sum = dataArray.reduce((a, b) => a + b, 0);
+        const average = sum / dataArray.length;
+        const decibels = 20 * Math.log10(average / 255);
+        
+        // 將分貝值映射到正規化的音量值 (0-1)
+        // 假設正常說話的範圍是 30-60 dB
+        const normalizedVolume = this.map(decibels, -40, 0, 0, 1);
+        const volume = Math.max(0, Math.min(1, normalizedVolume));
 
-            updateVisualization() {
-                if (!this.isRecording) return;
-                
-                this.animationFrameId = requestAnimationFrame(() => this.updateVisualization());
-                
-                const bufferLength = this.analyser.frequencyBinCount;
-                const dataArray = new Uint8Array(bufferLength);
-                this.analyser.getByteFrequencyData(dataArray);
-                
-                const volume = dataArray.reduce((a, b) => a + b, 0) / bufferLength / 255;
-                const particleCount = this.getFrequencyRange(dataArray);
-                
-                this.updateColor();
-                
-                // 更新音量環
-                const volumeRing = document.querySelector('.volume-ring');
-                volumeRing.style.strokeWidth = 1 + volume * 30;
-                
-                // 更新中心圓點
-                const centerParticle = document.querySelector('.center-particle');
-                centerParticle.setAttribute('r', 4 + volume * 6);
-                
-                // 更新放射線
-                this.rayRotation += 0.5 + volume * 2;
-                const rays = document.querySelectorAll('.rays line');
-                const time = Date.now() / 1000;
-
-                rays.forEach((ray, index) => {
-                    const amplitude = this.rayAmplitudes[index];
-                    const phase = this.rayPhases[index];
-                    
-                    const waveOffset = Math.sin(time * 2 + phase) * amplitude;
-                    const lengthMultiplier = 1 + volume * 2 + waveOffset * 0.5;
-                    
-                    ray.setAttribute("y2", -40 * lengthMultiplier);
-                    const strokeWidth = 1 + volume * 8 + Math.abs(waveOffset) * 2;
-                    ray.style.strokeWidth = strokeWidth;
-                    
-                    const baseAngle = (index * 360) / rays.length;
-                    const rotationAngle = baseAngle + this.rayRotation + Math.sin(time + phase) * 5;
-                    ray.setAttribute("transform", `rotate(${rotationAngle})`);
-                });
-
-                // 更新軌道粗細
-                document.querySelectorAll('.orbit').forEach((orbit, index) => {
-                    const strokeWidth = 1 + volume * 8 * (1 - index * 0.2);
-                    orbit.style.strokeWidth = strokeWidth;
-                });
-
-                // 更新軌道粒子
-                document.querySelectorAll('.orbit-particle').forEach(particle => {
-                    const baseX = parseFloat(particle.getAttribute('data-base-x') || 0);
-                    const baseY = parseFloat(particle.getAttribute('data-base-y') || 0);
-                    
-                    const expansion = 1 + volume * 0.8;
-                    particle.setAttribute('cx', baseX * expansion);
-                    particle.setAttribute('cy', baseY * expansion);
-                    particle.setAttribute('r', 4 + volume * 6);
-                });
-
-                // 更新軌道旋轉
-                document.querySelectorAll('[class^="orbit-group-"]').forEach(group => {
-                    const currentRotation = parseFloat(group.getAttribute('data-rotation'));
-                    const speed = parseFloat(group.getAttribute('data-speed'));
-                    const newRotation = (currentRotation + speed * (1 + volume)) % 360;
-                    group.setAttribute('data-rotation', newRotation);
-                    group.style.transform = `rotate(${newRotation}deg)`;
-                });
+        // 在人聲頻率範圍內尋找主頻率（85Hz-255Hz）
+        const minFreqBin = Math.floor(85 * this.analyser.fftSize / this.audioContext.sampleRate);
+        const maxFreqBin = Math.floor(255 * this.analyser.fftSize / this.audioContext.sampleRate);
+        
+        let maxValue = 0;
+        let maxIndex = 0;
+        for (let i = minFreqBin; i <= maxFreqBin; i++) {
+            if (dataArray[i] > maxValue) {
+                maxValue = dataArray[i];
+                maxIndex = i;
             }
         }
+        const dominantFrequency = maxIndex * this.audioContext.sampleRate / this.analyser.fftSize;
+
+        return {
+            volume,
+            decibels,
+            frequency: dominantFrequency
+        };
+    }
+
+    // 添加映射函數
+    map(value, inMin, inMax, outMin, outMax) {
+        return ((value - inMin) * (outMax - outMin)) / (inMax - inMin) + outMin;
+    }
+
+
+
+updateVisualization() {
+        if (!this.isRecording) return;
+        
+        this.animationFrameId = requestAnimationFrame(() => this.updateVisualization());
+        
+        const audioData = this.getAudioData();
+        if (!audioData) return;
+
+        // 計算經過的時間和顏色
+        const elapsed = (Date.now() - this.startTime) / 1000;
+        this.colorHue = (elapsed * 15) % 360; // 每15秒完成一個顏色循環
+        const currentColor = `hsl(${this.colorHue}, 70%, 60%)`;
+
+        // 更新數據顯示
+        this.decibelValue.textContent = `${audioData.decibels.toFixed(1)} dB`;
+        this.frequencyValue.textContent = `${audioData.frequency.toFixed(0)} Hz`;
+        this.volumeValue.textContent = `${(audioData.volume * 100).toFixed(1)}%`;
+
+        // 更新放射線
+        document.querySelectorAll('.ray').forEach((ray, i) => {
+            const length = 40 + audioData.volume * 80;
+            const opacity = 0.3 + audioData.volume * 0.7;
+            ray.setAttribute("y2", -length);
+            ray.style.stroke = currentColor;
+            ray.style.strokeOpacity = opacity;
+        });
+
+        // 更新音量圓環
+        const volumeRing = document.querySelector('.volume-ring');
+        const ringWidth = 1 + audioData.volume * 20;
+        volumeRing.style.stroke = currentColor;
+        volumeRing.style.strokeWidth = ringWidth;
+        volumeRing.style.strokeOpacity = 0.4 + audioData.volume * 0.6;
+
+        // 更新軌道和小球
+        const orbitGroups = document.querySelectorAll('.orbit-group');
+        this.orbitsRotation += 0.2 * (1 + audioData.volume);
+        this.ballsRotation += 0.5 * (1 + audioData.volume);
+
+        orbitGroups.forEach((group, i) => {
+            const orbit = group.querySelector('.orbit');
+            const baseRx = parseFloat(orbit.getAttribute('rx'));
+            const baseRy = parseFloat(orbit.getAttribute('ry'));
+            const baseRotation = parseFloat(orbit.getAttribute('data-rotation') || '0');
+            
+            const orbitRotation = baseRotation + this.orbitsRotation * (i % 2 ? -1 : 1);
+            
+            orbit.setAttribute('transform', `rotate(${orbitRotation})`);
+            orbit.style.stroke = currentColor;
+            orbit.style.strokeOpacity = 0.2 + audioData.volume * 0.6;
+            orbit.style.strokeWidth = 1 + audioData.volume * 3;
+
+            // 更新小球
+            const balls = group.querySelectorAll('.orbit-ball');
+            balls.forEach((ball) => {
+                const baseAngle = parseFloat(ball.getAttribute('data-angle'));
+                const currentAngle = baseAngle + this.ballsRotation;
+                
+                const rx = baseRx * (1 + audioData.volume * 0.2);
+                const ry = baseRy * (1 + audioData.volume * 0.2);
+                
+                const angleRad = currentAngle * Math.PI / 180;
+                const x = rx * Math.cos(angleRad);
+                const y = ry * Math.sin(angleRad);
+                
+                const rotationRad = orbitRotation * Math.PI / 180;
+                const rotatedX = x * Math.cos(rotationRad) - y * Math.sin(rotationRad);
+                const rotatedY = x * Math.sin(rotationRad) + y * Math.cos(rotationRad);
+                
+                ball.setAttribute("cx", rotatedX);
+                ball.setAttribute("cy", rotatedY);
+                
+                ball.style.fill = currentColor;
+                ball.setAttribute("r", 3 + audioData.volume * 8);
+                ball.style.fillOpacity = 0.4 + audioData.volume * 0.6;
+            });
+        });
+    }
+}
+     
 
         // 初始化視覺化效果
         new AudioVisualizer();
