@@ -44,7 +44,7 @@ function startAudio() {
       micStarted = true;
       amplitude = new p5.Amplitude();
       amplitude.setInput(mic);
-      fft = new p5.FFT(0.8, 64); // 增加FFT的平滑度，使用64個頻帶
+      fft = new p5.FFT(0.8, 256); // 增加FFT的平滑度，使用64個頻帶
       fft.setInput(mic);
       
       // 更改按鈕為錄製按鈕
@@ -59,34 +59,19 @@ function calculateCircleCount() {
   if (!fft) return 5; // 默認值
   
   let spectrum = fft.analyze();
-  let bassEnergy = 0;
-  let midEnergy = 0;
-  let trebleEnergy = 0;
+  let energy = 0;
   
-  // 分析不同頻段的能量
-  // 低頻 (20-250Hz)
-  for(let i = 0; i < 10; i++) {
-    bassEnergy += spectrum[i];
+  // 在256個頻帶中，6000Hz大約對應到索引175
+  // (6000/22050) * 256 ≈ 175
+  for(let i = 50; i < 210; i++) {
+    energy += spectrum[i];
   }
-  bassEnergy = bassEnergy / 10;
   
-  // 中頻 (250-2000Hz)
-  for(let i = 10; i < 30; i++) {
-    midEnergy += spectrum[i];
-  }
-  midEnergy = midEnergy / 20;
-  
-  // 高頻 (2000-20000Hz)
-  for(let i = 30; i < spectrum.length; i++) {
-    trebleEnergy += spectrum[i];
-  }
-  trebleEnergy = trebleEnergy / (spectrum.length - 30);
-  
-  // 計算總能量的平均值
-  let avgEnergy = (bassEnergy + midEnergy + trebleEnergy) / 3;
+  // 計算平均能量
+  energy = energy / 160;
   
   // 將能量映射到2-6的範圍
-  let circleCount = Math.round(map(avgEnergy, 0, 255, 2, 6));
+  let circleCount = Math.round(map(energy, 0, 255, 2, 7));
   return constrain(circleCount, 2, 6);
 }
 
